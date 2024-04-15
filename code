@@ -1,0 +1,208 @@
+/*
+
+  somebot ARM
+  JoyStick Control for UNO/NANO Board
+
+  pins:
+  11 : Servo base   
+  10 : Servo left   
+  9 : Servo right  
+  5 : Servo claw   
+
+*/
+
+#include <Servo.h>
+
+
+#define SERVOS      (4)     
+
+Servo arm_servos[SERVOS];   
+/*
+  arm_servos[0]: pin 11 -- Servo base   
+  arm_servos[1]: pin 10 -- Servo left   
+  arm_servos[2]: pin  9 -- Servo right  
+  arm_servos[3]: pin  5 -- Servo claw   
+*/
+int servo_pins[SERVOS];         
+int servo_cur_angle[SERVOS];    
+int servo_min_angle[SERVOS];    
+int servo_max_angle[SERVOS];    
+int servo_init_angle[SERVOS];   
+
+
+int joystick_value[SERVOS];
+
+
+#define CLAW_OPEN_ANGLE     (45)    
+#define CLAW_CLOSE_ANGLE    (5)    
+#define CLAW_SERVO_INDEX    (SERVOS-1)  
+
+int demo_actions[15][SERVOS] = {
+
+    { 90, 90, 90, CLAW_OPEN_ANGLE},
+    { 90, 140, 75, CLAW_OPEN_ANGLE},
+    { 36, 120, 75, CLAW_OPEN_ANGLE},
+    { 36, 120, 140, CLAW_OPEN_ANGLE},
+    { 36, 120, 140, CLAW_CLOSE_ANGLE},
+    { 36, 118, 88, CLAW_CLOSE_ANGLE},
+    { 50, 118, 88, CLAW_CLOSE_ANGLE},
+    { 165, 118, 100, CLAW_CLOSE_ANGLE},
+    { 165, 118, 130, CLAW_CLOSE_ANGLE},
+    { 165, 118, 134, CLAW_CLOSE_ANGLE},
+    { 165, 120, 140, CLAW_CLOSE_ANGLE},
+    { 165, 120, 140, CLAW_OPEN_ANGLE},
+    { 165, 120, 88, CLAW_OPEN_ANGLE},
+
+
+
+};
+
+#define MAXSPEED    (10)    
+int demo_speed = 1;         
+
+#define JOYSTICK_LED            (3)     
+#define L_SENSE                 6
+
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(L_SENSE, INPUT_PULLUP);     
+
+  pinMode(JOYSTICK_LED, OUTPUT);
+  digitalWrite(JOYSTICK_LED, HIGH); 
+
+  Serial.println("System Running...");
+
+  
+  initialization();
+
+}
+
+void loop() {
+  if (0 ==digitalRead(L_SENSE))
+  {
+      play_demo();
+  }
+}
+
+void initialization() {
+  servo_pins[0] = 11;            
+  servo_min_angle[0] = 0;       
+  servo_max_angle[0] = 180;     
+  servo_init_angle[0] = 90;     
+
+  servo_pins[1] = 10;           
+  servo_min_angle[1] = 10;      
+  servo_max_angle[1] = 140;     
+  servo_init_angle[1] = 90;     
+
+  servo_pins[2] = 9;            
+  servo_min_angle[2] = 40;      
+  servo_max_angle[2] = 170;     
+  servo_init_angle[2] = 90;     
+
+  servo_pins[3] = 5;                        
+  servo_min_angle[3] = CLAW_CLOSE_ANGLE;    
+  servo_max_angle[3] = CLAW_OPEN_ANGLE;     
+  servo_init_angle[3] = CLAW_OPEN_ANGLE;   
+
+
+  
+  init_servos();
+}
+
+
+void init_servos() {
+  for (int i = 0; i < SERVOS; i++)
+  {
+    arm_servos[i].attach(servo_pins[i], 500, 2500);      
+    arm_servos[i].write(servo_init_angle[i]); 
+    joystick_value[i] = 0;                    
+  }
+}
+
+
+
+void close_claw(bool close)
+{
+  if (close) {
+    arm_servos[CLAW_SERVO_INDEX].write(CLAW_CLOSE_ANGLE);
+  } else {
+    arm_servos[CLAW_SERVO_INDEX].write(CLAW_OPEN_ANGLE);
+  }
+}
+
+
+void move_from_to(int *action_from, int *action_to)
+{
+  int max_angle = 0;
+  int max_steps = 0;
+  float step_angle[SERVOS];
+
+  
+  adjust_speed();
+
+  
+  max_angle = max(max(abs(action_to[0] - action_from[0]), abs(action_to[1] - action_from[1])), abs(action_to[2] - action_from[2]));
+  max_steps = max_angle / demo_speed;
+  max_steps = max_steps < 1 ? 1 : max_steps;
+  for (int i = 0; i < CLAW_SERVO_INDEX; i++)
+  {
+    step_angle[i] = float(action_to[i] - action_from[i]) / float(max_steps);
+  }
+
+  for (int j = 1; j <= max_steps; j++) 
+  {
+    for (int i = 0; i < CLAW_SERVO_INDEX; i++)
+    {
+      
+      int new_angle = action_from[i] + j * step_angle[i];
+
+      if ((new_angle < servo_min_angle[i]) || (new_angle > servo_max_angle[i]))
+      {
+        
+        continue;
+      }
+
+      arm_servos[i].write(new_angle);  
+    }
+    delay(20);
+  }
+
+  
+  arm_servos[CLAW_SERVO_INDEX].write(action_to[CLAW_SERVO_INDEX]);
+  delay(20);
+
+}
+
+
+void play_demo()
+{
+  
+  int counts = sizeof(demo_actions) / (SERVOS * sizeof(int));
+
+  Serial.print("demo_actions counts = ");
+  Serial.println(counts);
+
+  move_from_to(servo_init_angle, demo_actions[0]);
+
+  while (1)
+  {
+    for (int i = 0; i < counts - 1; i++)
+    {
+      
+      move_from_to(demo_actions[i], demo_actions[i + 1]);
+    }
+  }
+}
+
+
+
+void adjust_speed()
+{
+  
+  for (int i = 0; i < SERVOS; i++)
+  demo_speed = demo_speed < 1 ? 1 : demo_speed;
+  demo_speed = demo_speed > MAXSPEED ? MAXSPEED : demo_speed;
+}
